@@ -1,5 +1,30 @@
 import argparse
 import os
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--epoch", type=int, default=0, help="epoch to start training from")
+parser.add_argument("--n_epochs", type=int, default=200, help="number of epochs of training")
+parser.add_argument("--dataset_name", type=str, default="apple2orange", help="name of the dataset")
+parser.add_argument("--batch_size", type=int, default=1, help="size of the batches")
+parser.add_argument("--lr", type=float, default=0.0001, help="adam: learning rate")
+parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient")
+parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient")
+parser.add_argument("--decay_epoch", type=int, default=100, help="epoch from which to start lr decay")
+parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
+parser.add_argument("--img_height", type=int, default=256, help="size of image height")
+parser.add_argument("--img_width", type=int, default=256, help="size of image width")
+parser.add_argument("--channels", type=int, default=3, help="number of image channels")
+parser.add_argument("--sample_interval", type=int, default=100, help="interval between saving generator samples")
+parser.add_argument("--checkpoint_interval", type=int, default=-1, help="interval between saving model checkpoints")
+parser.add_argument("--n_downsample", type=int, default=2, help="number downsampling layers in encoder")
+parser.add_argument("--dim", type=int, default=64, help="number of filters in first encoder layer")
+parser.add_argument('--gpu', type=str, default='0,1', help='choose which gpu(s) to use during training')
+opt = parser.parse_args()
+print(opt)
+
+# Set gpu(s)
+os.environ['CUDA_VISIBLE_DEVICES'] = opt.gpu
+
 import numpy as np
 import math
 import itertools
@@ -21,28 +46,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--epoch", type=int, default=0, help="epoch to start training from")
-parser.add_argument("--n_epochs", type=int, default=200, help="number of epochs of training")
-parser.add_argument("--dataset_name", type=str, default="apple2orange", help="name of the dataset")
-parser.add_argument("--batch_size", type=int, default=1, help="size of the batches")
-parser.add_argument("--lr", type=float, default=0.0001, help="adam: learning rate")
-parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient")
-parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient")
-parser.add_argument("--decay_epoch", type=int, default=100, help="epoch from which to start lr decay")
-parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
-parser.add_argument("--n_gpu", type=int, default=1, help="number of gpu to use during training")
-parser.add_argument("--img_height", type=int, default=256, help="size of image height")
-parser.add_argument("--img_width", type=int, default=256, help="size of image width")
-parser.add_argument("--channels", type=int, default=3, help="number of image channels")
-parser.add_argument("--sample_interval", type=int, default=100, help="interval between saving generator samples")
-parser.add_argument("--checkpoint_interval", type=int, default=-1, help="interval between saving model checkpoints")
-parser.add_argument("--n_downsample", type=int, default=2, help="number downsampling layers in encoder")
-parser.add_argument("--dim", type=int, default=64, help="number of filters in first encoder layer")
-opt = parser.parse_args()
-print(opt)
 
-cuda = True if torch.cuda.is_available() else False
+cuda = True if torch.cuda.is_available() else False    
 
 # Create sample and checkpoint directories
 os.makedirs("images/%s" % opt.dataset_name, exist_ok=True)
@@ -68,14 +73,18 @@ D1 = Discriminator(input_shape)
 D2 = Discriminator(input_shape)
 
 if cuda:
-    E1 = E1.cuda()
-    E2 = E2.cuda()
-    G1 = G1.cuda()
-    G2 = G2.cuda()
-    D1 = D1.cuda()
-    D2 = D2.cuda()
+    E1 = torch.nn.DataParallel(E1.cuda())
+    E2 = torch.nn.DataParallel(E2.cuda())
+    G1 = torch.nn.DataParallel(G1.cuda())
+    G2 = torch.nn.DataParallel(G2.cuda())
+    D1 = torch.nn.DataParallel(D1.cuda())
+    D2 = torch.nn.DataParallel(D2.cuda())
     criterion_GAN.cuda()
     criterion_pixel.cuda()
+
+    for i in opt.gpu.split(','):
+        i = int(i)
+        print(f'cuda:[{i}] - {torch.cuda.get_device_name(i)}')
 
 if opt.epoch != 0:
     # Load pretrained models
@@ -195,8 +204,8 @@ for epoch in range(opt.epoch, opt.n_epochs):
 
 
         # Adversarial ground truths
-        valid = Variable(Tensor(np.ones((X1.size(0), *D1.output_shape))), requires_grad=False)
-        fake = Variable(Tensor(np.zeros((X1.size(0), *D1.output_shape))), requires_grad=False)
+        valid = Variable(Tensor(np.ones((X1.size(0), *D1.module.output_shape))), requires_grad=False)
+        fake = Variable(Tensor(np.zeros((X1.size(0), *D1.module.output_shape))), requires_grad=False)
 
         # -------------------------------
         #  Train Encoders and Generators
@@ -298,11 +307,21 @@ for epoch in range(opt.epoch, opt.n_epochs):
     lr_scheduler_D1.step()
     lr_scheduler_D2.step()
 
-    if opt.checkpoint_interval != -1 and epoch % opt.checkpoint_interval == 0:
+
+    # TODO now only save last epoch
+    if epoch == opt.n_epochs-1:
         # Save model checkpoints
-        torch.save(E1.state_dict(), "saved_models/%s/E1_%d.pth" % (opt.dataset_name, epoch))
-        torch.save(E2.state_dict(), "saved_models/%s/E2_%d.pth" % (opt.dataset_name, epoch))
-        torch.save(G1.state_dict(), "saved_models/%s/G1_%d.pth" % (opt.dataset_name, epoch))
-        torch.save(G2.state_dict(), "saved_models/%s/G2_%d.pth" % (opt.dataset_name, epoch))
-        torch.save(D1.state_dict(), "saved_models/%s/D1_%d.pth" % (opt.dataset_name, epoch))
-        torch.save(D2.state_dict(), "saved_models/%s/D2_%d.pth" % (opt.dataset_name, epoch))
+        torch.save(E1.module.state_dict(), "saved_models/%s/E1_%d.pth" % (opt.dataset_name, epoch))
+        torch.save(E2.module.state_dict(), "saved_models/%s/E2_%d.pth" % (opt.dataset_name, epoch))
+        torch.save(G1.module.state_dict(), "saved_models/%s/G1_%d.pth" % (opt.dataset_name, epoch))
+        torch.save(G2.module.state_dict(), "saved_models/%s/G2_%d.pth" % (opt.dataset_name, epoch))
+        torch.save(D1.module.state_dict(), "saved_models/%s/D1_%d.pth" % (opt.dataset_name, epoch))
+        torch.save(D2.module.state_dict(), "saved_models/%s/D2_%d.pth" % (opt.dataset_name, epoch))
+    # if opt.checkpoint_interval != -1 and epoch % opt.checkpoint_interval == 0:
+    #     # Save model checkpoints
+    #     torch.save(E1.module.state_dict(), "saved_models/%s/E1_%d.pth" % (opt.dataset_name, epoch))
+    #     torch.save(E2.module.state_dict(), "saved_models/%s/E2_%d.pth" % (opt.dataset_name, epoch))
+    #     torch.save(G1.module.state_dict(), "saved_models/%s/G1_%d.pth" % (opt.dataset_name, epoch))
+    #     torch.save(G2.module.state_dict(), "saved_models/%s/G2_%d.pth" % (opt.dataset_name, epoch))
+    #     torch.save(D1.module.state_dict(), "saved_models/%s/D1_%d.pth" % (opt.dataset_name, epoch))
+    #     torch.save(D2.module.state_dict(), "saved_models/%s/D2_%d.pth" % (opt.dataset_name, epoch))
