@@ -186,6 +186,7 @@ for epoch in range(opt.epoch, opt.n_epochs):
 
         # Skip the final batch when the total number of training images modulo batch-size does not equal zero
         if len(batch['A']) != opt.batch_size or len(batch['B']) != opt.batch_size:
+            print("Batch Mismatch - skip current batch")
             continue   #TODO
 
         # Set model input
