@@ -84,9 +84,11 @@ class Encoder(nn.Module):
         return z + mu
 
     def forward(self, x):
+        # print(x.shape)
         x = self.model_blocks(x)
         mu = self.shared_block(x)
         z = self.reparameterization(mu)
+        # print("Complete")
         return mu, z
 
 

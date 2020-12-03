@@ -5,8 +5,11 @@
 .DS_Store
 
 data/*/
+data/*.zip
 implementations/*/data
 implementations/*/images
 implementations/*/saved_models
+
+*.ipynb
 
 __pycache__

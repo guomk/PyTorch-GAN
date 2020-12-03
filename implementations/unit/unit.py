@@ -58,11 +58,11 @@ shared_dim = opt.dim * 2 ** opt.n_downsample
 
 # Initialize generator and discriminator
 shared_E = ResidualBlock(features=shared_dim)
-E1 = Encoder(dim=opt.dim, n_downsample=opt.n_downsample, shared_block=shared_E)
-E2 = Encoder(dim=opt.dim, n_downsample=opt.n_downsample, shared_block=shared_E)
+E1 = Encoder(in_channels=opt.channels, dim=opt.dim, n_downsample=opt.n_downsample, shared_block=shared_E)
+E2 = Encoder(in_channels=opt.channels, dim=opt.dim, n_downsample=opt.n_downsample, shared_block=shared_E)
 shared_G = ResidualBlock(features=shared_dim)
-G1 = Generator(dim=opt.dim, n_upsample=opt.n_downsample, shared_block=shared_G)
-G2 = Generator(dim=opt.dim, n_upsample=opt.n_downsample, shared_block=shared_G)
+G1 = Generator(out_channels=opt.channels, dim=opt.dim, n_upsample=opt.n_downsample, shared_block=shared_G)
+G2 = Generator(out_channels=opt.channels, dim=opt.dim, n_upsample=opt.n_downsample, shared_block=shared_G)
 D1 = Discriminator(input_shape)
 D2 = Discriminator(input_shape)
 
@@ -123,13 +123,22 @@ lr_scheduler_D2 = torch.optim.lr_scheduler.LambdaLR(
 Tensor = torch.cuda.FloatTensor if cuda else torch.Tensor
 
 # Image transformations
-transforms_ = [
-    transforms.Resize(int(opt.img_height * 1.12), Image.BICUBIC),
-    transforms.RandomCrop((opt.img_height, opt.img_width)),
-    transforms.RandomHorizontalFlip(),
-    transforms.ToTensor(),
-    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-]
+if opt.channels == 3:
+    transforms_ = [
+        transforms.Resize(int(opt.img_height * 1.12), Image.BICUBIC),
+        transforms.RandomCrop((opt.img_height, opt.img_width)),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+    ]
+elif opt.channels == 1:
+    transforms_ = [
+        transforms.Resize(int(opt.img_height * 1.12), Image.BICUBIC),
+        transforms.RandomCrop((opt.img_height, opt.img_width)),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5), (0.5)),
+    ]
 
 # Training data loader
 dataloader = DataLoader(
@@ -177,6 +186,7 @@ for epoch in range(opt.epoch, opt.n_epochs):
         # Set model input
         X1 = Variable(batch["A"].type(Tensor))
         X2 = Variable(batch["B"].type(Tensor))
+
 
         # Adversarial ground truths
         valid = Variable(Tensor(np.ones((X1.size(0), *D1.output_shape))), requires_grad=False)
