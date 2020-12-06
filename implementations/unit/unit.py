@@ -141,7 +141,7 @@ if opt.channels == 3:
         transforms.ToTensor(),
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
     ]
-elif opt.channels == 1:
+else:
     transforms_ = [
         transforms.Resize(int(opt.img_height * 1.12), Image.BICUBIC),
         transforms.RandomCrop((opt.img_height, opt.img_width)),
