@@ -9,7 +9,6 @@ data/*.zip
 implementations/*/data
 implementations/*/images
 implementations/*/saved_models
-implementations/*/inference
 
 *.ipynb
 
