@@ -82,9 +82,10 @@ if cuda:
     criterion_GAN.cuda()
     criterion_pixel.cuda()
 
-    for i in opt.gpu.split(','):
+    for i in range(len(opt.gpu.split(','))):
         i = int(i)
-        print(f'cuda:[{i}] - {torch.cuda.get_device_name(i)}')
+        gpu_id = opt.gpu.split(',')[i]
+        print(f'cuda:[{gpu_id}] - {torch.cuda.get_device_name(i)}')
 
 if opt.epoch != 0:
     # Load pretrained models
@@ -152,14 +153,14 @@ else:
 
 # Training data loader
 dataloader = DataLoader(
-    ImageDataset("../../data/%s" % opt.dataset_name, transforms_=transforms_, unaligned=True),
+    ImageDataset("../../../data/%s" % opt.dataset_name, transforms_=transforms_, unaligned=True),
     batch_size=opt.batch_size,
     shuffle=True,
     num_workers=opt.n_cpu,
 )
 # Test data loader
 val_dataloader = DataLoader(
-    ImageDataset("../../data/%s" % opt.dataset_name, transforms_=transforms_, unaligned=True, mode="test"),
+    ImageDataset("../../../data/%s" % opt.dataset_name, transforms_=transforms_, unaligned=True, mode="test"),
     batch_size=5,
     shuffle=True,
     num_workers=1,

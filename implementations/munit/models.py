@@ -220,7 +220,12 @@ class MultiDiscriminator(nn.Module):
                 ),
             )
 
-        self.downsample = nn.AvgPool2d(in_channels, stride=2, padding=[1, 1], count_include_pad=False)
+        if in_channels == 3:
+            _padding = [1, 1]
+        else:
+            _padding = 0
+
+        self.downsample = nn.AvgPool2d(in_channels, stride=2, padding=_padding, count_include_pad=False)
 
     def compute_loss(self, x, gt):
         """Computes the MSE between model output and scalar gt"""

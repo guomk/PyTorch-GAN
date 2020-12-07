@@ -1,5 +1,32 @@
 import argparse
 import os
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--epoch", type=int, default=0, help="epoch to start training from")
+parser.add_argument("--n_epochs", type=int, default=200, help="number of epochs of training")
+parser.add_argument("--dataset_name", type=str, default="apple2orange", help="name of the dataset")
+parser.add_argument("--batch_size", type=int, default=1, help="size of the batches")
+parser.add_argument("--lr", type=float, default=0.0001, help="adam: learning rate")
+parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient")
+parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient")
+parser.add_argument("--decay_epoch", type=int, default=100, help="epoch from which to start lr decay")
+parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
+parser.add_argument("--img_height", type=int, default=256, help="size of image height")
+parser.add_argument("--img_width", type=int, default=256, help="size of image width")
+parser.add_argument("--channels", type=int, default=3, help="number of image channels")
+parser.add_argument("--sample_interval", type=int, default=100, help="interval between saving generator samples")
+parser.add_argument("--checkpoint_interval", type=int, default=-1, help="interval between saving model checkpoints")
+parser.add_argument("--n_downsample", type=int, default=2, help="number downsampling layers in encoder")
+parser.add_argument("--dim", type=int, default=64, help="number of filters in first encoder layer")
+parser.add_argument('--gpu', type=str, default='0,1', help='choose which gpu(s) to use during training')
+parser.add_argument("--style_dim", type=int, default=8, help="dimensionality of the style code")
+parser.add_argument("--n_residual", type=int, default=3, help="number of residual blocks in encoder / decoder")
+opt = parser.parse_args()
+print(opt)
+
+# Set gpu(s)
+os.environ['CUDA_VISIBLE_DEVICES'] = opt.gpu
+
 import numpy as np
 import math
 import itertools
@@ -21,28 +48,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--epoch", type=int, default=0, help="epoch to start training from")
-parser.add_argument("--n_epochs", type=int, default=200, help="number of epochs of training")
-parser.add_argument("--dataset_name", type=str, default="edges2shoes", help="name of the dataset")
-parser.add_argument("--batch_size", type=int, default=1, help="size of the batches")
-parser.add_argument("--lr", type=float, default=0.0001, help="adam: learning rate")
-parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient")
-parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient")
-parser.add_argument("--decay_epoch", type=int, default=100, help="epoch from which to start lr decay")
-parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
-parser.add_argument("--img_height", type=int, default=128, help="size of image height")
-parser.add_argument("--img_width", type=int, default=128, help="size of image width")
-parser.add_argument("--channels", type=int, default=3, help="number of image channels")
-parser.add_argument("--sample_interval", type=int, default=400, help="interval saving generator samples")
-parser.add_argument("--checkpoint_interval", type=int, default=-1, help="interval between saving model checkpoints")
-parser.add_argument("--n_downsample", type=int, default=2, help="number downsampling layers in encoder")
-parser.add_argument("--n_residual", type=int, default=3, help="number of residual blocks in encoder / decoder")
-parser.add_argument("--dim", type=int, default=64, help="number of filters in first encoder layer")
-parser.add_argument("--style_dim", type=int, default=8, help="dimensionality of the style code")
-opt = parser.parse_args()
-print(opt)
-
 cuda = torch.cuda.is_available()
 
 # Create sample and checkpoint directories
@@ -52,21 +57,26 @@ os.makedirs("saved_models/%s" % opt.dataset_name, exist_ok=True)
 criterion_recon = torch.nn.L1Loss()
 
 # Initialize encoders, generators and discriminators
-Enc1 = Encoder(dim=opt.dim, n_downsample=opt.n_downsample, n_residual=opt.n_residual, style_dim=opt.style_dim)
-Dec1 = Decoder(dim=opt.dim, n_upsample=opt.n_downsample, n_residual=opt.n_residual, style_dim=opt.style_dim)
-Enc2 = Encoder(dim=opt.dim, n_downsample=opt.n_downsample, n_residual=opt.n_residual, style_dim=opt.style_dim)
-Dec2 = Decoder(dim=opt.dim, n_upsample=opt.n_downsample, n_residual=opt.n_residual, style_dim=opt.style_dim)
-D1 = MultiDiscriminator()
-D2 = MultiDiscriminator()
+Enc1 = Encoder(in_channels=opt.channels, dim=opt.dim, n_downsample=opt.n_downsample, n_residual=opt.n_residual, style_dim=opt.style_dim)
+Dec1 = Decoder(out_channels=opt.channels, dim=opt.dim, n_upsample=opt.n_downsample, n_residual=opt.n_residual, style_dim=opt.style_dim)
+Enc2 = Encoder(in_channels=opt.channels, dim=opt.dim, n_downsample=opt.n_downsample, n_residual=opt.n_residual, style_dim=opt.style_dim)
+Dec2 = Decoder(out_channels=opt.channels, dim=opt.dim, n_upsample=opt.n_downsample, n_residual=opt.n_residual, style_dim=opt.style_dim)
+D1 = MultiDiscriminator(in_channels=opt.channels)
+D2 = MultiDiscriminator(in_channels=opt.channels)
 
 if cuda:
-    Enc1 = Enc1.cuda()
-    Dec1 = Dec1.cuda()
-    Enc2 = Enc2.cuda()
-    Dec2 = Dec2.cuda()
-    D1 = D1.cuda()
-    D2 = D2.cuda()
+    Enc1 = torch.nn.DataParallel(Enc1.cuda())
+    Dec1 = torch.nn.DataParallel(Dec1.cuda())
+    Enc2 = torch.nn.DataParallel(Enc2.cuda())
+    Dec2 = torch.nn.DataParallel(Dec2.cuda())
+    D1 = torch.nn.DataParallel(D1.cuda())
+    D2 = torch.nn.DataParallel(D2.cuda())
     criterion_recon.cuda()
+
+    for i in range(len(opt.gpu.split(','))):
+        i = int(i)
+        gpu_id = opt.gpu.split(',')[i]
+        print(f'cuda:[{gpu_id}] - {torch.cuda.get_device_name(i)}')
 
 if opt.epoch != 0:
     # Load pretrained models
@@ -115,25 +125,47 @@ lr_scheduler_D2 = torch.optim.lr_scheduler.LambdaLR(
 Tensor = torch.cuda.FloatTensor if cuda else torch.Tensor
 
 # Configure dataloaders
-transforms_ = [
-    transforms.Resize((opt.img_height, opt.img_width), Image.BICUBIC),
-    transforms.ToTensor(),
-    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-]
+if opt.channels == 3:
+    transforms_ = [
+        transforms.Resize((opt.img_height, opt.img_width), Image.BICUBIC),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+    ]
+else:
+    transforms_ = [
+        transforms.Resize((opt.img_height, opt.img_width), Image.BICUBIC),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5), (0.5)),
+    ]
 
-dataloader = DataLoader(
-    ImageDataset("../../data/%s" % opt.dataset_name, transforms_=transforms_),
-    batch_size=opt.batch_size,
-    shuffle=True,
-    num_workers=opt.n_cpu,
-)
+if opt.dataset_name == "edges2shoes":
+    dataloader = DataLoader(
+        Pix2pixImageDataset("../../../data/%s" % opt.dataset_name, transforms_=transforms_),
+        batch_size=opt.batch_size,
+        shuffle=True,
+        num_workers=opt.n_cpu,
+    )
 
-val_dataloader = DataLoader(
-    ImageDataset("../../data/%s" % opt.dataset_name, transforms_=transforms_, mode="val"),
-    batch_size=5,
-    shuffle=True,
-    num_workers=1,
-)
+    val_dataloader = DataLoader(
+        Pix2pixImageDataset("../../../data/%s" % opt.dataset_name, transforms_=transforms_, mode="val"),
+        batch_size=5,
+        shuffle=True,
+        num_workers=1,
+    )
+else:
+    dataloader = DataLoader(
+        CycleGANImageDataset("../../../data/%s" % opt.dataset_name, transforms_=transforms_, unaligned=True),
+        batch_size=opt.batch_size,
+        shuffle=True,
+        num_workers=opt.n_cpu,
+    )
+
+    val_dataloader = DataLoader(
+        CycleGANImageDataset("../../../data/%s" % opt.dataset_name, transforms_=transforms_, mode="test"),
+        batch_size=5,
+        shuffle=True,
+        num_workers=1,
+    )
 
 
 def sample_images(batches_done):
@@ -170,13 +202,18 @@ prev_time = time.time()
 for epoch in range(opt.epoch, opt.n_epochs):
     for i, batch in enumerate(dataloader):
 
+        # # Skip the final batch when the total number of training images modulo batch-size does not equal zero
+        # if len(batch['A']) != opt.batch_size or len(batch['B']) != opt.batch_size:
+        #     print("Batch Mismatch - skip current batch")
+        #     continue   #TODO
+
         # Set model input
         X1 = Variable(batch["A"].type(Tensor))
         X2 = Variable(batch["B"].type(Tensor))
 
         # Sampled style codes
         style_1 = Variable(torch.randn(X1.size(0), opt.style_dim, 1, 1).type(Tensor))
-        style_2 = Variable(torch.randn(X1.size(0), opt.style_dim, 1, 1).type(Tensor))
+        style_2 = Variable(torch.randn(X2.size(0), opt.style_dim, 1, 1).type(Tensor)) # ANCHOR modified from X1 to X2
 
         # -------------------------------
         #  Train Encoders and Generators
@@ -203,8 +240,8 @@ for epoch in range(opt.epoch, opt.n_epochs):
         X212 = Dec2(c_code_21, s_code_2) if lambda_cyc > 0 else 0
 
         # Losses
-        loss_GAN_1 = lambda_gan * D1.compute_loss(X21, valid)
-        loss_GAN_2 = lambda_gan * D2.compute_loss(X12, valid)
+        loss_GAN_1 = lambda_gan * D1.module.compute_loss(X21, valid)
+        loss_GAN_2 = lambda_gan * D2.module.compute_loss(X12, valid)
         loss_ID_1 = lambda_id * criterion_recon(X11, X1)
         loss_ID_2 = lambda_id * criterion_recon(X22, X2)
         loss_s_1 = lambda_style * criterion_recon(s_code_21, style_1)
@@ -237,7 +274,7 @@ for epoch in range(opt.epoch, opt.n_epochs):
 
         optimizer_D1.zero_grad()
 
-        loss_D1 = D1.compute_loss(X1, valid) + D1.compute_loss(X21.detach(), fake)
+        loss_D1 = D1.module.compute_loss(X1, valid) + D1.module.compute_loss(X21.detach(), fake)
 
         loss_D1.backward()
         optimizer_D1.step()
@@ -248,7 +285,7 @@ for epoch in range(opt.epoch, opt.n_epochs):
 
         optimizer_D2.zero_grad()
 
-        loss_D2 = D2.compute_loss(X2, valid) + D2.compute_loss(X12.detach(), fake)
+        loss_D2 = D2.module.compute_loss(X2, valid) + D2.module.compute_loss(X12.detach(), fake)
 
         loss_D2.backward()
         optimizer_D2.step()
@@ -278,11 +315,20 @@ for epoch in range(opt.epoch, opt.n_epochs):
     lr_scheduler_D1.step()
     lr_scheduler_D2.step()
 
-    if opt.checkpoint_interval != -1 and epoch % opt.checkpoint_interval == 0:
+    # TODO now only save last epoch
+    if epoch == opt.n_epochs-1:
         # Save model checkpoints
-        torch.save(Enc1.state_dict(), "saved_models/%s/Enc1_%d.pth" % (opt.dataset_name, epoch))
-        torch.save(Dec1.state_dict(), "saved_models/%s/Dec1_%d.pth" % (opt.dataset_name, epoch))
-        torch.save(Enc2.state_dict(), "saved_models/%s/Enc2_%d.pth" % (opt.dataset_name, epoch))
-        torch.save(Dec2.state_dict(), "saved_models/%s/Dec2_%d.pth" % (opt.dataset_name, epoch))
-        torch.save(D1.state_dict(), "saved_models/%s/D1_%d.pth" % (opt.dataset_name, epoch))
-        torch.save(D2.state_dict(), "saved_models/%s/D2_%d.pth" % (opt.dataset_name, epoch))
+        torch.save(Enc1.module.state_dict(), "saved_models/%s/Enc1_%d.pth" % (opt.dataset_name, epoch))
+        torch.save(Dec1.module.state_dict(), "saved_models/%s/Dec1_%d.pth" % (opt.dataset_name, epoch))
+        torch.save(Enc2.module.state_dict(), "saved_models/%s/Enc2_%d.pth" % (opt.dataset_name, epoch))
+        torch.save(Dec2.module.state_dict(), "saved_models/%s/Dec2_%d.pth" % (opt.dataset_name, epoch))
+        torch.save(D1.module.state_dict(), "saved_models/%s/D1_%d.pth" % (opt.dataset_name, epoch))
+        torch.save(D2.module.state_dict(), "saved_models/%s/D2_%d.pth" % (opt.dataset_name, epoch))
+    # if opt.checkpoint_interval != -1 and epoch % opt.checkpoint_interval == 0:
+    #     # Save model checkpoints
+    #     torch.save(Enc1.state_dict(), "saved_models/%s/Enc1_%d.pth" % (opt.dataset_name, epoch))
+    #     torch.save(Dec1.state_dict(), "saved_models/%s/Dec1_%d.pth" % (opt.dataset_name, epoch))
+    #     torch.save(Enc2.state_dict(), "saved_models/%s/Enc2_%d.pth" % (opt.dataset_name, epoch))
+    #     torch.save(Dec2.state_dict(), "saved_models/%s/Dec2_%d.pth" % (opt.dataset_name, epoch))
+    #     torch.save(D1.state_dict(), "saved_models/%s/D1_%d.pth" % (opt.dataset_name, epoch))
+    #     torch.save(D2.state_dict(), "saved_models/%s/D2_%d.pth" % (opt.dataset_name, epoch))
