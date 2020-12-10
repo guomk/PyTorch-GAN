@@ -126,8 +126,8 @@ for i, batch in enumerate(dataloader):
     X2 = Variable(batch["B"].type(Tensor)) # real_B
 
     # Sampled style codes
-    style_1 = Variable(torch.randn(X1.size(0), opt.style_dim, 1, 1).type(Tensor))
-    style_2 = Variable(torch.randn(X2.size(0), opt.style_dim, 1, 1).type(Tensor)) # ANCHOR modified from X1 to X2
+    # style_1 = Variable(torch.randn(X1.size(0), opt.style_dim, 1, 1).type(Tensor))
+    # style_2 = Variable(torch.randn(X2.size(0), opt.style_dim, 1, 1).type(Tensor)) # ANCHOR modified from X1 to X2
 
     # Get shared latent representation
     c_code_1, s_code_1 = Enc1(X1)
@@ -138,8 +138,8 @@ for i, batch in enumerate(dataloader):
     # X22 = Dec2(c_code_2, s_code_2)
 
     # Translate images
-    X21 = Dec1(c_code_2, style_1) # fake_A
-    X12 = Dec2(c_code_1, style_2) # fake_B
+    X21 = Dec1(c_code_2, s_code_1) # fake_A
+    X12 = Dec2(c_code_1, s_code_2) # fake_B
 
     # Save image files
     save_image(X21, save_dir + f'A/{filename_A[i]}_fake.png')
