@@ -18,8 +18,12 @@ parser.add_argument("--sample_interval", type=int, default=100, help="interval b
 parser.add_argument("--checkpoint_interval", type=int, default=-1, help="interval between saving model checkpoints")
 parser.add_argument("--n_downsample", type=int, default=2, help="number downsampling layers in encoder")
 parser.add_argument("--dim", type=int, default=64, help="number of filters in first encoder layer")
-parser.add_argument('--gpu', type=str, default='0,1', help='choose which gpu(s) to use during training')
+parser.add_argument("--gpu", type=str, default='0,1', help='choose which gpu(s) to use during training')
+parser.add_argument("--surfix", type=str, default="", help="surfix of saving directories")
 opt = parser.parse_args()
+
+if opt.surfix != "":
+    opt.surfix = '_' + opt.surfix
 print(opt)
 
 # Set gpu(s)
@@ -50,8 +54,8 @@ import torch
 cuda = True if torch.cuda.is_available() else False    
 
 # Create sample and checkpoint directories
-os.makedirs("images/%s" % opt.dataset_name, exist_ok=True)
-os.makedirs("saved_models/%s" % opt.dataset_name, exist_ok=True)
+os.makedirs("images/%s" % opt.dataset_name + opt.surfix, exist_ok=True)
+os.makedirs("saved_models/%s" % opt.dataset_name + opt.surfix, exist_ok=True)
 
 # Losses
 criterion_GAN = torch.nn.MSELoss()
@@ -89,12 +93,12 @@ if cuda:
 
 if opt.epoch != 0:
     # Load pretrained models
-    E1.load_state_dict(torch.load("saved_models/%s/E1_%d.pth" % (opt.dataset_name, opt.epoch)))
-    E2.load_state_dict(torch.load("saved_models/%s/E2_%d.pth" % (opt.dataset_name, opt.epoch)))
-    G1.load_state_dict(torch.load("saved_models/%s/G1_%d.pth" % (opt.dataset_name, opt.epoch)))
-    G2.load_state_dict(torch.load("saved_models/%s/G2_%d.pth" % (opt.dataset_name, opt.epoch)))
-    D1.load_state_dict(torch.load("saved_models/%s/D1_%d.pth" % (opt.dataset_name, opt.epoch)))
-    D2.load_state_dict(torch.load("saved_models/%s/D2_%d.pth" % (opt.dataset_name, opt.epoch)))
+    E1.load_state_dict(torch.load("saved_models/%s/E1_%d.pth" % (opt.dataset_name + opt.surfix, opt.epoch)))
+    E2.load_state_dict(torch.load("saved_models/%s/E2_%d.pth" % (opt.dataset_name + opt.surfix, opt.epoch)))
+    G1.load_state_dict(torch.load("saved_models/%s/G1_%d.pth" % (opt.dataset_name + opt.surfix, opt.epoch)))
+    G2.load_state_dict(torch.load("saved_models/%s/G2_%d.pth" % (opt.dataset_name + opt.surfix, opt.epoch)))
+    D1.load_state_dict(torch.load("saved_models/%s/D1_%d.pth" % (opt.dataset_name + opt.surfix, opt.epoch)))
+    D2.load_state_dict(torch.load("saved_models/%s/D2_%d.pth" % (opt.dataset_name + opt.surfix, opt.epoch)))
 else:
     # Initialize weights
     E1.apply(weights_init_normal)
@@ -152,7 +156,7 @@ else:
     ]
 
 # Training data loader
-dataloader = DataLoader(
+dataloader = DataLoader( 
     ImageDataset("../../../data/%s" % opt.dataset_name, transforms_=transforms_, unaligned=True),
     batch_size=opt.batch_size,
     shuffle=True,
@@ -177,7 +181,7 @@ def sample_images(batches_done):
     fake_X1 = G1(Z2)
     fake_X2 = G2(Z1)
     img_sample = torch.cat((X1.data, fake_X2.data, X2.data, fake_X1.data), 0)
-    save_image(img_sample, "images/%s/%s.png" % (opt.dataset_name, batches_done), nrow=5, normalize=True)
+    save_image(img_sample, "images/%s/%s.png" % (opt.dataset_name + opt.surfix, batches_done), nrow=5, normalize=True)
 
 
 def compute_kl(mu):
@@ -223,8 +227,8 @@ for epoch in range(opt.epoch, opt.n_epochs):
         recon_X2 = G2(Z2)
 
         # Translate images
-        fake_X1 = G1(Z2)
-        fake_X2 = G2(Z1)
+        fake_X1 = G1(Z2) # B-A
+        fake_X2 = G2(Z1) # A-B
 
         # Cycle translation
         mu1_, Z1_ = E1(fake_X1)
@@ -312,12 +316,12 @@ for epoch in range(opt.epoch, opt.n_epochs):
     # TODO now only save last epoch
     if epoch == opt.n_epochs-1:
         # Save model checkpoints
-        torch.save(E1.module.state_dict(), "saved_models/%s/E1_%d.pth" % (opt.dataset_name, epoch))
-        torch.save(E2.module.state_dict(), "saved_models/%s/E2_%d.pth" % (opt.dataset_name, epoch))
-        torch.save(G1.module.state_dict(), "saved_models/%s/G1_%d.pth" % (opt.dataset_name, epoch))
-        torch.save(G2.module.state_dict(), "saved_models/%s/G2_%d.pth" % (opt.dataset_name, epoch))
-        torch.save(D1.module.state_dict(), "saved_models/%s/D1_%d.pth" % (opt.dataset_name, epoch))
-        torch.save(D2.module.state_dict(), "saved_models/%s/D2_%d.pth" % (opt.dataset_name, epoch))
+        torch.save(E1.module.state_dict(), "saved_models/%s/E1_%d.pth" % (opt.dataset_name + opt.surfix, epoch))
+        torch.save(E2.module.state_dict(), "saved_models/%s/E2_%d.pth" % (opt.dataset_name + opt.surfix, epoch))
+        torch.save(G1.module.state_dict(), "saved_models/%s/G1_%d.pth" % (opt.dataset_name + opt.surfix, epoch))
+        torch.save(G2.module.state_dict(), "saved_models/%s/G2_%d.pth" % (opt.dataset_name + opt.surfix, epoch))
+        torch.save(D1.module.state_dict(), "saved_models/%s/D1_%d.pth" % (opt.dataset_name + opt.surfix, epoch))
+        torch.save(D2.module.state_dict(), "saved_models/%s/D2_%d.pth" % (opt.dataset_name + opt.surfix, epoch))
     # if opt.checkpoint_interval != -1 and epoch % opt.checkpoint_interval == 0:
     #     # Save model checkpoints
     #     torch.save(E1.module.state_dict(), "saved_models/%s/E1_%d.pth" % (opt.dataset_name, epoch))
