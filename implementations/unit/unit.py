@@ -199,9 +199,9 @@ for epoch in range(opt.epoch, opt.n_epochs):
     for i, batch in enumerate(dataloader):
 
         # Skip the final batch when the total number of training images modulo batch-size does not equal zero
-        if len(batch['A']) != opt.batch_size or len(batch['B']) != opt.batch_size:
-            print("Batch Mismatch - skip current batch")
-            continue   #TODO
+        # if len(batch['A']) != opt.batch_size or len(batch['B']) != opt.batch_size:
+        #     print("Batch Mismatch - skip current batch")
+        #     continue   #TODO
 
         # Set model input
         X1 = Variable(batch["A"].type(Tensor))

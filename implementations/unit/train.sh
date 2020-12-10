@@ -2,8 +2,9 @@ python unit.py\
  --dataset_name ct2mri \
  --img_height 128 --img_width 128 \
  --channels 1 \
- --n_epochs 2 \
- --decay_epoch 1 \
- --batch_size 20 \
- --gpu 3 \
- --surfix test 
+ --n_epochs 100 \
+ --decay_epoch 50 \
+ --batch_size 100 \
+ --gpu 2,3 \
+ --surfix raw \
+ --sample_interval 1000
