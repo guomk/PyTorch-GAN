@@ -30,10 +30,10 @@ class ImageDataset(Dataset):
             image_B = Image.open(self.files_B[index % len(self.files_B)])
 
         # Convert grayscale images to rgb
-        if image_A.mode != "RGB":
-            image_A = to_rgb(image_A)
-        if image_B.mode != "RGB":
-            image_B = to_rgb(image_B)
+        # if image_A.mode != "RGB":
+        #     image_A = to_rgb(image_A)
+        # if image_B.mode != "RGB":
+        #     image_B = to_rgb(image_B)
 
         item_A = self.transform(image_A)
         item_B = self.transform(image_B)

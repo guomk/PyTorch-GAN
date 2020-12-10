@@ -1,5 +1,35 @@
 import argparse
 import os
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--epoch", type=int, default=0, help="epoch to start training from")
+parser.add_argument("--n_epochs", type=int, default=200, help="number of epochs of training")
+parser.add_argument("--dataset_name", type=str, default="monet2photo", help="name of the dataset")
+parser.add_argument("--batch_size", type=int, default=1, help="size of the batches")
+parser.add_argument("--lr", type=float, default=0.0002, help="adam: learning rate")
+parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient")
+parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient")
+parser.add_argument("--decay_epoch", type=int, default=100, help="epoch from which to start lr decay")
+parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
+parser.add_argument("--img_height", type=int, default=256, help="size of image height")
+parser.add_argument("--img_width", type=int, default=256, help="size of image width")
+parser.add_argument("--channels", type=int, default=3, help="number of image channels")
+parser.add_argument("--sample_interval", type=int, default=100, help="interval between saving generator outputs")
+parser.add_argument("--checkpoint_interval", type=int, default=-1, help="interval between saving model checkpoints")
+parser.add_argument("--n_residual_blocks", type=int, default=9, help="number of residual blocks in generator")
+parser.add_argument("--lambda_cyc", type=float, default=10.0, help="cycle loss weight")
+parser.add_argument("--lambda_id", type=float, default=5.0, help="identity loss weight")
+parser.add_argument("--gpu", type=str, default='0,1', help='choose which gpu(s) to use during training')
+parser.add_argument("--surfix", type=str, default="", help="surfix of saving directories")
+opt = parser.parse_args()
+
+if opt.surfix != "":
+    opt.surfix = '_' + opt.surfix
+print(opt)
+
+# Set gpu(s)
+os.environ['CUDA_VISIBLE_DEVICES'] = opt.gpu
+
 import numpy as np
 import math
 import itertools
@@ -21,30 +51,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--epoch", type=int, default=0, help="epoch to start training from")
-parser.add_argument("--n_epochs", type=int, default=200, help="number of epochs of training")
-parser.add_argument("--dataset_name", type=str, default="monet2photo", help="name of the dataset")
-parser.add_argument("--batch_size", type=int, default=1, help="size of the batches")
-parser.add_argument("--lr", type=float, default=0.0002, help="adam: learning rate")
-parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient")
-parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient")
-parser.add_argument("--decay_epoch", type=int, default=100, help="epoch from which to start lr decay")
-parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
-parser.add_argument("--img_height", type=int, default=256, help="size of image height")
-parser.add_argument("--img_width", type=int, default=256, help="size of image width")
-parser.add_argument("--channels", type=int, default=3, help="number of image channels")
-parser.add_argument("--sample_interval", type=int, default=100, help="interval between saving generator outputs")
-parser.add_argument("--checkpoint_interval", type=int, default=-1, help="interval between saving model checkpoints")
-parser.add_argument("--n_residual_blocks", type=int, default=9, help="number of residual blocks in generator")
-parser.add_argument("--lambda_cyc", type=float, default=10.0, help="cycle loss weight")
-parser.add_argument("--lambda_id", type=float, default=5.0, help="identity loss weight")
-opt = parser.parse_args()
-print(opt)
-
 # Create sample and checkpoint directories
-os.makedirs("images/%s" % opt.dataset_name, exist_ok=True)
-os.makedirs("saved_models/%s" % opt.dataset_name, exist_ok=True)
+os.makedirs("images/%s" % opt.dataset_name + opt.surfix, exist_ok=True)
+os.makedirs("saved_models/%s" % opt.dataset_name + opt.surfix, exist_ok=True)
 
 # Losses
 criterion_GAN = torch.nn.MSELoss()
@@ -69,13 +78,17 @@ if cuda:
     criterion_GAN.cuda()
     criterion_cycle.cuda()
     criterion_identity.cuda()
+    for i in range(len(opt.gpu.split(','))):
+        i = int(i)
+        gpu_id = opt.gpu.split(',')[i]
+        print(f'cuda:[{gpu_id}] - {torch.cuda.get_device_name(i)}')
 
 if opt.epoch != 0:
     # Load pretrained models
-    G_AB.load_state_dict(torch.load("saved_models/%s/G_AB_%d.pth" % (opt.dataset_name, opt.epoch)))
-    G_BA.load_state_dict(torch.load("saved_models/%s/G_BA_%d.pth" % (opt.dataset_name, opt.epoch)))
-    D_A.load_state_dict(torch.load("saved_models/%s/D_A_%d.pth" % (opt.dataset_name, opt.epoch)))
-    D_B.load_state_dict(torch.load("saved_models/%s/D_B_%d.pth" % (opt.dataset_name, opt.epoch)))
+    G_AB.load_state_dict(torch.load("saved_models/%s/G_AB_%d.pth" % (opt.dataset_name + opt.surfix, opt.epoch)))
+    G_BA.load_state_dict(torch.load("saved_models/%s/G_BA_%d.pth" % (opt.dataset_name + opt.surfix, opt.epoch)))
+    D_A.load_state_dict(torch.load("saved_models/%s/D_A_%d.pth" % (opt.dataset_name + opt.surfix, opt.epoch)))
+    D_B.load_state_dict(torch.load("saved_models/%s/D_B_%d.pth" % (opt.dataset_name + opt.surfix, opt.epoch)))
 else:
     # Initialize weights
     G_AB.apply(weights_init_normal)
@@ -108,24 +121,33 @@ fake_A_buffer = ReplayBuffer()
 fake_B_buffer = ReplayBuffer()
 
 # Image transformations
-transforms_ = [
-    transforms.Resize(int(opt.img_height * 1.12), Image.BICUBIC),
-    transforms.RandomCrop((opt.img_height, opt.img_width)),
-    transforms.RandomHorizontalFlip(),
-    transforms.ToTensor(),
-    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-]
+if opt.channels == 3:
+    transforms_ = [
+        transforms.Resize(int(opt.img_height * 1.12), Image.BICUBIC),
+        transforms.RandomCrop((opt.img_height, opt.img_width)),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+    ]
+else:
+    transforms_ = [
+        transforms.Resize(int(opt.img_height * 1.12), Image.BICUBIC),
+        transforms.RandomCrop((opt.img_height, opt.img_width)),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5), (0.5)),
+    ]
 
 # Training data loader
 dataloader = DataLoader(
-    ImageDataset("../../data/%s" % opt.dataset_name, transforms_=transforms_, unaligned=True),
+    ImageDataset("../../../data/%s" % opt.dataset_name, transforms_=transforms_, unaligned=True),
     batch_size=opt.batch_size,
     shuffle=True,
     num_workers=opt.n_cpu,
 )
 # Test data loader
 val_dataloader = DataLoader(
-    ImageDataset("../../data/%s" % opt.dataset_name, transforms_=transforms_, unaligned=True, mode="test"),
+    ImageDataset("../../../data/%s" % opt.dataset_name, transforms_=transforms_, unaligned=True, mode="test"),
     batch_size=5,
     shuffle=True,
     num_workers=1,
@@ -148,7 +170,7 @@ def sample_images(batches_done):
     fake_B = make_grid(fake_B, nrow=5, normalize=True)
     # Arange images along y-axis
     image_grid = torch.cat((real_A, fake_B, real_B, fake_A), 1)
-    save_image(image_grid, "images/%s/%s.png" % (opt.dataset_name, batches_done), normalize=False)
+    save_image(image_grid, "images/%s/%s.png" % (opt.dataset_name + opt.surfix, batches_done), normalize=False)
 
 
 # ----------
@@ -276,9 +298,17 @@ for epoch in range(opt.epoch, opt.n_epochs):
     lr_scheduler_D_A.step()
     lr_scheduler_D_B.step()
 
-    if opt.checkpoint_interval != -1 and epoch % opt.checkpoint_interval == 0:
+    # TODO now only save last epoch
+    if epoch == opt.n_epochs-1:
         # Save model checkpoints
-        torch.save(G_AB.state_dict(), "saved_models/%s/G_AB_%d.pth" % (opt.dataset_name, epoch))
-        torch.save(G_BA.state_dict(), "saved_models/%s/G_BA_%d.pth" % (opt.dataset_name, epoch))
-        torch.save(D_A.state_dict(), "saved_models/%s/D_A_%d.pth" % (opt.dataset_name, epoch))
-        torch.save(D_B.state_dict(), "saved_models/%s/D_B_%d.pth" % (opt.dataset_name, epoch))
+        torch.save(G_AB.state_dict(), "saved_models/%s/G_AB_%d.pth" % (opt.dataset_name + opt.surfix, epoch))
+        torch.save(G_BA.state_dict(), "saved_models/%s/G_BA_%d.pth" % (opt.dataset_name + opt.surfix, epoch))
+        torch.save(D_A.state_dict(), "saved_models/%s/D_A_%d.pth" % (opt.dataset_name + opt.surfix, epoch))
+        torch.save(D_B.state_dict(), "saved_models/%s/D_B_%d.pth" % (opt.dataset_name + opt.surfix, epoch))
+
+    # if opt.checkpoint_interval != -1 and epoch % opt.checkpoint_interval == 0:
+    #     # Save model checkpoints
+    #     torch.save(G_AB.state_dict(), "saved_models/%s/G_AB_%d.pth" % (opt.dataset_name + opt.surfix, epoch))
+    #     torch.save(G_BA.state_dict(), "saved_models/%s/G_BA_%d.pth" % (opt.dataset_name + opt.surfix, epoch))
+    #     torch.save(D_A.state_dict(), "saved_models/%s/D_A_%d.pth" % (opt.dataset_name + opt.surfix, epoch))
+    #     torch.save(D_B.state_dict(), "saved_models/%s/D_B_%d.pth" % (opt.dataset_name + opt.surfix, epoch))
