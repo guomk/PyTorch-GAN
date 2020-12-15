@@ -2,9 +2,10 @@ python cyclegan.py\
  --dataset_name ct2mri \
  --img_height 110 --img_width 110 \
  --channels 1 \
- --n_epochs 2 \
- --decay_epoch 1 \
- --batch_size 50 \
- --gpu 1 \
- --surfix test \
+ --n_epochs 100 \
+ --decay_epoch 50 \
+ --batch_size 100 \
+ --gpu 1,2 \
+ --surfix v3 \
+ --lambda_id 1 \
  --sample_interval 1000

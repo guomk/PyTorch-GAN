@@ -71,10 +71,10 @@ D_A = Discriminator(input_shape)
 D_B = Discriminator(input_shape)
 
 if cuda:
-    G_AB = G_AB.cuda()
-    G_BA = G_BA.cuda()
-    D_A = D_A.cuda()
-    D_B = D_B.cuda()
+    G_AB = torch.nn.DataParallel(G_AB.cuda())
+    G_BA = torch.nn.DataParallel(G_BA.cuda())
+    D_A = torch.nn.DataParallel(D_A.cuda())
+    D_B = torch.nn.DataParallel(D_B.cuda())
     criterion_GAN.cuda()
     criterion_cycle.cuda()
     criterion_identity.cuda()
@@ -186,8 +186,8 @@ for epoch in range(opt.epoch, opt.n_epochs):
         real_B = Variable(batch["B"].type(Tensor))
 
         # Adversarial ground truths
-        valid = Variable(Tensor(np.ones((real_A.size(0), *D_A.output_shape))), requires_grad=False)
-        fake = Variable(Tensor(np.zeros((real_A.size(0), *D_A.output_shape))), requires_grad=False)
+        valid = Variable(Tensor(np.ones((real_A.size(0), *D_A.module.output_shape))), requires_grad=False)
+        fake = Variable(Tensor(np.zeros((real_A.size(0), *D_A.module.output_shape))), requires_grad=False)
 
         # ------------------
         #  Train Generators
@@ -301,10 +301,10 @@ for epoch in range(opt.epoch, opt.n_epochs):
     # TODO now only save last epoch
     if epoch == opt.n_epochs-1:
         # Save model checkpoints
-        torch.save(G_AB.state_dict(), "saved_models/%s/G_AB_%d.pth" % (opt.dataset_name + opt.surfix, epoch))
-        torch.save(G_BA.state_dict(), "saved_models/%s/G_BA_%d.pth" % (opt.dataset_name + opt.surfix, epoch))
-        torch.save(D_A.state_dict(), "saved_models/%s/D_A_%d.pth" % (opt.dataset_name + opt.surfix, epoch))
-        torch.save(D_B.state_dict(), "saved_models/%s/D_B_%d.pth" % (opt.dataset_name + opt.surfix, epoch))
+        torch.save(G_AB.module.state_dict(), "saved_models/%s/G_AB_%d.pth" % (opt.dataset_name + opt.surfix, epoch))
+        torch.save(G_BA.module.state_dict(), "saved_models/%s/G_BA_%d.pth" % (opt.dataset_name + opt.surfix, epoch))
+        torch.save(D_A.module.state_dict(), "saved_models/%s/D_A_%d.pth" % (opt.dataset_name + opt.surfix, epoch))
+        torch.save(D_B.module.state_dict(), "saved_models/%s/D_B_%d.pth" % (opt.dataset_name + opt.surfix, epoch))
 
     # if opt.checkpoint_interval != -1 and epoch % opt.checkpoint_interval == 0:
     #     # Save model checkpoints
