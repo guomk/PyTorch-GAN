@@ -5,7 +5,7 @@ python cyclegan.py\
  --n_epochs 100 \
  --decay_epoch 50 \
  --batch_size 100 \
- --gpu 1,2 \
- --surfix v3 \
- --lambda_id 1 \
+ --gpu 1,4 \
+ --surfix big_idloss \
+ --lambda_id 10 \
  --sample_interval 1000

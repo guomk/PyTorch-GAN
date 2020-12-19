@@ -12,8 +12,8 @@ parser.add_argument("--dataset_name", type=str, default="apple2orange", help="na
 parser.add_argument("--surfix", type=str, default="", help="surfix of saving directories")
 parser.add_argument("--batch_size", type=int, default=1, help="size of the batches")
 parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
-parser.add_argument("--img_height", type=int, default=256, help="size of image height")
-parser.add_argument("--img_width", type=int, default=256, help="size of image width")
+parser.add_argument("--img_height", type=int, default=256, help="size of preferred image height")
+parser.add_argument("--img_width", type=int, default=256, help="size of prefereed image width")
 parser.add_argument("--channels", type=int, default=3, help="number of image channels")
 parser.add_argument("--dim", type=int, default=64, help="number of filters in first encoder layer")
 parser.add_argument("--n_downsample", type=int, default=2, help="number downsampling layers in encoder")
@@ -114,11 +114,40 @@ else:
 #     ]
 
 dataloader = DataLoader(
-    ImageDataset("../../../data/%s" % opt.dataset_name, transforms_=transforms_, unaligned=True, mode="test"),
-    batch_size=opt.batch_size,
+    ImageDataset("../../../data/%s" % opt.dataset_name, transforms_=transforms_, unaligned=False, mode="test"),
+    batch_size=1,
     shuffle=False,
     num_workers=1,
 )
+
+# get shape of the incoming data
+input_dim = [0,0,0,0]
+for i, batch in enumerate(dataloader):
+    input_dim = batch['A'].shape
+    break
+
+width, height = input_dim[3], input_dim[2]
+if opt.img_width >= width and opt.img_height >= height:
+    horizontal_pad = (opt.img_width - width) // 2
+    vertical_pad = (opt.img_height - height) // 2
+
+    if opt.channels == '3':
+        transforms_ = [ transforms.ToTensor(),
+                        transforms.Pad([horizontal_pad, vertical_pad], padding_mode='edge'),
+                        transforms.Normalize((0.5,0.5,0.5), (0.5,0.5,0.5)) ]
+    else:
+        transforms_ = [ transforms.ToTensor(),
+                        transforms.Pad([horizontal_pad, vertical_pad], padding_mode='edge'),
+                        transforms.Normalize((0.5,), (0.5,)) ]
+
+    dataloader = DataLoader(
+        ImageDataset("../../../data/%s" % opt.dataset_name, transforms_=transforms_, unaligned=False, mode="test"),
+        batch_size=1,
+        shuffle=False,
+        num_workers=1,
+    )
+
+
 ###################################
 
 ###### Testing######
@@ -133,7 +162,7 @@ if not os.path.exists(save_dir + 'B'):
 
 # Prepare file names
 filename_A, filename_B = [], []
-dataroot = "../../../data/%s" % opt.dataset_name + opt.surfix
+dataroot = "../../../data/%s" % opt.dataset_name
 for file in os.listdir(dataroot + "/test/A"):
     if file.endswith(".jpg") or file.endswith(".png"):
         filename_A.append(file[:-4]) # Strip off file format (.jpg)
@@ -162,8 +191,14 @@ for i, batch in enumerate(dataloader):
     fake_B = G2(Z1)
 
     # Save image files
-    # img_sample = torch.cat((real_A.data, fake_B.data, real_B.data, fake_A.data), 0)
-    # save_image(img_sample, save_dir + f'{filename_A[i]}.png', nrow=1, normalize=True)
+    img_sample = torch.cat((real_A.data, fake_B.data, real_B.data, fake_A.data), 0)
+    # print(real_A.shape)
+    # print(real_B.shape)
+    # print(fake_A.shape)
+    # print(fake_B.shape)
+    # print(img_sample.shape)
+    # break
+    save_image(img_sample, save_dir + f'{filename_A[i]}.png', nrow=1, padding=0, normalize=True)
     save_image(fake_A, save_dir + f'A/{filename_A[i]}_fake.png', nrow=1, normalize=True)
     save_image(fake_B, save_dir + f'B/{filename_B[i]}_fake.png', nrow=1, normalize=True)
 
